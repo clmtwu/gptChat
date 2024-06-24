@@ -46,31 +46,34 @@ import time
 import json
 import re
 import shutil
+import neuralcloud.py
 from openai import OpenAI
 from dotenv import load_dotenv
 
+#OPENAI Functions
 load_dotenv()
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
+"""Function that looks at the time at which a FILENAME (string) was last edited.
+If that time changes, it means FILENAME was edited, and we return its new contents."""
+#TODO: There must be a better way to notice if the filename has changed.
 def wait_modified(filename):
-  """Function that looks at the time at which a FILENAME (string) was last edited.
-  If that time changes, it means FILENAME was edited, and we return its new contents."""
-  last_modified=os.path.getmtime(filename)
+  last_modified = os.path.getmtime(filename)
   while last_modified == os.path.getmtime(filename):
     time.sleep(2.0) #adjust as necessary as to not burn out your processor
   else:
     with open(filename, "r") as read:
       return read.read().rstrip() #rstrip removes the extra newline at the end
 
+"""Function to save a string to a file.
+Takes in an INPUT (string), and overwrites to FILENAME (string)"""
 def string_save(filename, input):
-  """Function to save a string to a file.
-  Takes in an INPUT (string), and overwrites to FILENAME (string)"""
   with open(filename, "w") as file:
     file.write(input)
 
+"""Function to save DICTIONARY (dict) that is passed in to a FILENAME (string).
+If the file already exists, its content is overwritten. Returns DICTIONARY"""
 def dict_write(filename, dictionary, mode):
-  """Function to save DICTIONARY (dict) that is passed in to a FILENAME (string).
-  If the file already exists, its content is overwritten. Returns DICTIONARY"""
   with open(filename, mode) as save: #for MODE: w is overwrite, a is append, etc
      save.write(json.dumps(dictionary))
   return dictionary #returns in case we want to reuse this somewhere
@@ -87,13 +90,16 @@ def save(value, key, filename):
   existing[key]=value #reassign old value to new VALUE
   return dict_write(filename, existing, 'w') #just overwrite, it's easier
 
-def bridge(ai_file, user_file):
-  """Higher order function responsible for bridging this script to AI_FILE and USER_FILE.
+
+  """
+  Higher order function responsible for bridging this script to AI_FILE and USER_FILE.
   Contains an INNER function that takes in AI_TEXT or USER_TEXT, both of which are optional
   If AI_TEXT is passed in, it writes that to AI_FILE
   Then, if USER_TEXT is passed in, it writes that to USER_FILE
-  If nothing was passed in, it just returns AI_FILE and USER_FILE, respectively"""
-  def inner(ai_text=None, user_text=None):
+  If nothing was passed in, it just returns AI_FILE and USER_FILE, respectively
+  """
+def bridge(ai_file, user_file):
+  def inner(ai_text = None, user_text = None):
     if ai_text: #first check if we should write to AI_FILE
       string_save(ai_file, ai_text)
     if user_text: #then check if we should write to USER_FILE (unused for now)
