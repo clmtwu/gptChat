@@ -50,13 +50,14 @@ import neuralcloud.py
 from openai import OpenAI
 from dotenv import load_dotenv
 
-#OPENAI Functions
+#OPENAI
 load_dotenv()
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+current_version = "gpt-3.5-turbo-0125" 
 
 """Function that looks at the time at which a FILENAME (string) was last edited.
 If that time changes, it means FILENAME was edited, and we return its new contents."""
-#TODO: There must be a better way to notice if the filename has changed.
+#TODO: constant file reading must be a thing!
 def wait_modified(filename):
   last_modified = os.path.getmtime(filename)
   while last_modified == os.path.getmtime(filename):
@@ -65,8 +66,10 @@ def wait_modified(filename):
     with open(filename, "r") as read:
       return read.read().rstrip() #rstrip removes the extra newline at the end
 
-"""Function to save a string to a file.
-Takes in an INPUT (string), and overwrites to FILENAME (string)"""
+""" Saves a string to a file.
+  @param: filename (string), input (string)
+  @return: none
+"""
 def string_save(filename, input):
   with open(filename, "w") as file:
     file.write(input)
@@ -78,28 +81,40 @@ def dict_write(filename, dictionary, mode):
      save.write(json.dumps(dictionary))
   return dictionary #returns in case we want to reuse this somewhere
 
+"""
+@function: reads file (filename) to return array
+@params: filename (string)
+@return: array
+"""
 def dict_read(filename):
-  """Function to read FILENAME and return the dictionary inside"""
   with open(filename) as read:
     return json.load(read) #return contents with their correct type
 
+"""
+  @function: reads file (FILENAME) and looks for KEY. If not found, overwrites FILE with new VALUE for KEY
+  @params: value (string?), key (string), filename (string?)
+  @return: new file"""
 def save(value, key, filename):
-  """Function to read FILENAME and look for the key KEY (string).
-  Then overwrites FILENAME with new value VALUE for key KEY."""
-  existing=dict_read(filename) #get content of FILENAME
-  existing[key]=value #reassign old value to new VALUE
+  existing = dict_read(filename) #get content of FILENAME
+  existing[key] = value #reassign old value to new VALUE
   return dict_write(filename, existing, 'w') #just overwrite, it's easier
 
-
-  """
+"""
   Higher order function responsible for bridging this script to AI_FILE and USER_FILE.
   Contains an INNER function that takes in AI_TEXT or USER_TEXT, both of which are optional
   If AI_TEXT is passed in, it writes that to AI_FILE
   Then, if USER_TEXT is passed in, it writes that to USER_FILE
   If nothing was passed in, it just returns AI_FILE and USER_FILE, respectively
+  
+  @function:  casts conversation to two files: ai_file and user_file respectively.
+  @param: (ai_file, user_file)(ai_text, user_text)
+          NOTE: latter/inner params are OPTIONAL. None cast is to boolean compare if texts are empty
+  @return: 
+          case 1: successful (all four params have non-null items): none
+          case 2: either texts empty: respective file
   """
-def bridge(ai_file, user_file):
-  def inner(ai_text = None, user_text = None):
+def bridge (ai_file, user_file):
+  def inner (ai_text = None, user_text = None):
     if ai_text: #first check if we should write to AI_FILE
       string_save(ai_file, ai_text)
     if user_text: #then check if we should write to USER_FILE (unused for now)
@@ -108,29 +123,34 @@ def bridge(ai_file, user_file):
       return ai_file, user_file
   return inner
 
+"""Function to send an API request to OpenAI. 
+@param: OpenAI model (obj?), convo (string?)
+@return: API output (string)
+"""
 def api_request(model, convo):
-  """Function to send an API request to OpenAI. Returns the API output string"""
-  request=client.chat.completions.create(
-    model=model,
-    messages=convo #messages is supposed to be a list of dicts
+  request = client.chat.completions.create(
+    model = model,
+    messages = convo #messages is supposed to be a list of dicts
   )
   return request.choices[0].message.content #return only the text of content
 
+"""Function that checks if a key from the summer garden has appeared in the INPUT passed in. 
+  Loads in the garden value to CONVO.
+  NOTE: INPUT should remain unedited, and only CONVO has been modified"""
 def check_garden(input, filename, convo):
-  """Function that checks if a key from the summer garden
-  has appeared in the INPUT passed in. Then loads in the garden value to CONVO.
-  Note that INPUT should remain unedited, and only CONVO has been modified"""
-  memory=dict_read(filename) #load in the entire memory to look through garden
-  for each in list(memory['garden'].keys()): #iterate through the dict inside the garden
+  memory = dict_read(filename) #load in the entire memory to look through garden
+  for each in list(memory['garden'].keys()):
     if each in input and str(memory['garden'][each]) not in str(convo): #if the key is in the INPUT passed in, AND not already in convo
       convo.append({'role': 'assistant', 'content': memory['garden'][each] + f' These memories are tied to the word {each}.'}, ) #update convo
   save(convo, 'convo', filename) #now save the convo
   return input, convo #return the INPUT and the CONVO
 
+"""Function to summarize and compact the current Neural Cloud
+  This saves token counts in the long run. 
+  
+  @param: AI_NAME (string?), FILENAME (string?), CONVO (string?), KEY(string?) *
+*the key in the summer garden dict in a list"""
 def summarize(model, ai_name, filename, convo, bridge_active, key=None, local_summary=False):
-  """Function to summarize and compact the current Neural Cloud
-  This saves token counts in the long run. Takes in AI_NAME, FILENAME, CONVO,
-  and KEY (the key in the summer garden dict in a list"""
   print('> Neural Cloud compacting in progress. Please wait.')
   shutil.copy(ncb, 'backup.ncb.bk') #make a copy of the neural cloud in case we need to restore it
   if bridge_active:
@@ -164,11 +184,18 @@ def summarize(model, ai_name, filename, convo, bridge_active, key=None, local_su
     string_save(user_file, "") #and blank out user_file for the next round
   return take_turns(model, convo, ai_name, filename, bridge_active, local_summary)('user') #let AI do the summarization in background. That means user gets control next
 
-def take_turns(model, convo, ai_name, filename, bridge_active=None, local_summary=False):
-  """Higher order function that does things"""
-  def inner(who, convo=convo, bridge_active=bridge_active):
-    """Figure out whether to have the user or the AI given some result
-    WHO should be the string 'api' or 'user' """
+"""
+@function: function to determine whether the output (convo/string) is from API or USER.
+@outer_params: (model, convo, ai_name, filename, bridge_active, local_summary)
+@return: none
+
+@inner_function: Determines which string (convo) is API or USER
+@inner_params: (who [string] {ai/user}, convo [string], bridge_active)
+NOTE: calling this function every message results in O(n^2) time complexity. recommended action: create singular instance of an arraylist and simply update for a better O(n) performance LOL
+@return: none
+  """
+def take_turns (model, convo, ai_name, filename, bridge_active = None, local_summary = False):
+  def inner (who, convo = convo, bridge_active = bridge_active):
     if who == "api":
       response, convo = check_garden(api_request(model, convo), filename, convo) #run a request, but first CHECK_GARDEN
       convo.append({'role': 'assistant', 'content': f'{response}'}, ) #append the return of API_REQUEST
@@ -261,6 +288,6 @@ def start(model, bridge_active=False, local_summary=False):
 
 ## Initiate the script. Modify as needed. ##
 #ncb, ai_file, user_file = "neuralcloud_backup.ncb", 'neuralcloud_ai.file', 'neuralcloud_user.file' #you MUST define these variables
-#start('gpt-3.5-turbo-0125', bridge_active=True) #bridge is active for bridging to discord-erma
-#start('gpt-3.5-turbo-0125') #bridge is not active, and only prints to local console
-#start('gpt-3.5-turbo-0125', local_summary="philschmid/flan-t5-base-samsum") #bridge is not active, and summarization is done locally using the speicifed model.
+#start(current_version, bridge_active=True) #bridge is active for bridging to discord-erma
+#start(current_version) #bridge is not active, and only prints to local console
+#start(current_version, local_summary="philschmid/flan-t5-base-samsum") #bridge is not active, and summarization is done locally using the speicifed model.
